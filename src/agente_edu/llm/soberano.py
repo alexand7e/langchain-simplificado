@@ -50,7 +50,7 @@ class Soberano(BaseChatModel):
         for attempt in range(self.max_retries):
             try:
                 response = requests.post(
-                    f"{self.base_url}/v1/chat/completions",
+                    f"{self.base_url}/chat/completions",
                     json=payload,
                     headers=headers,
                     timeout=self.timeout,

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     default_persona: str = "ensino_medio"
     top_k: int = 3
 
-    interface: str = "telegram"
+    interface: str = "web"
     telegram_bot_token: str = ""
     web_port: int = 8000
 
