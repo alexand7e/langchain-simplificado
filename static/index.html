@@ -3,124 +3,544 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agente Educacional</title>
+<title>Agente Educacional — Do Piauí para o Mundo</title>
+
+<!-- marked.js: renderiza markdown nas respostas do bot -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- mermaid.js: renderiza o grafo LangGraph -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --azul:     #1a73e8;
+    --azul-esc: #1558b0;
+    --verde:    #38a169;
+    --laranja:  #e8a71a;
+    --vermelho: #e53e3e;
+    --roxo:     #553c9a;
+    --bg:       #f0f2f5;
+    --borda:    #dee2e6;
+    --texto:    #1a1a1a;
+  }
+
   body {
     font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    background: #f0f2f5; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
   }
-  .app { display: flex; gap: 1rem; width: min(1200px, 98vw); height: min(90vh, 750px); }
+
+  /* ── Cabeçalho ── */
+  .header {
+    background: linear-gradient(135deg, #1558b0, #1a73e8);
+    color: #fff;
+    padding: .65rem 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .header h1   { font-size: 1.05rem; font-weight: 700; }
+  .header p    { font-size: .75rem; opacity: .85; margin-top: .1rem; }
+  .header .tag {
+    background: rgba(255,255,255,.18);
+    border: 1px solid rgba(255,255,255,.35);
+    border-radius: 20px;
+    padding: .2rem .65rem;
+    font-size: .75rem;
+    white-space: nowrap;
+  }
+
+  /* ── Pipeline visual ── */
+  .pipeline {
+    background: #fff;
+    border-bottom: 1px solid var(--borda);
+    padding: .5rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+    flex-shrink: 0;
+    overflow-x: auto;
+  }
+  .pipe-step {
+    display: flex; align-items: center; gap: .3rem;
+    padding: .25rem .6rem; border-radius: 20px;
+    font-size: .75rem; font-weight: 600; white-space: nowrap;
+    border: 2px solid transparent; transition: all .2s;
+  }
+  .pipe-step.rag    { background:#e8f0fe; color:#1a73e8; border-color:#c5d8fd; }
+  .pipe-step.prompt { background:#fef9e7; color:#b7791f; border-color:#fdeaa0; }
+  .pipe-step.llm    { background:#e6fffa; color:#276749; border-color:#9ae6b4; }
+  .pipe-step.guard  { background:#fff5f5; color:#c53030; border-color:#feb2b2; }
+  .pipe-step.active { transform:scale(1.08); box-shadow:0 0 0 3px rgba(26,115,232,.3); }
+  .pipe-arrow       { color:#aaa; font-size:.95rem; }
+
+  /* ── Layout principal ── */
+  .main { display:flex; gap:1rem; padding:1rem; flex:1; min-height:0; }
+
+  /* ── Chat ── */
   .chat-panel {
-    flex: 1; display: flex; flex-direction: column;
-    background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.12);
-    overflow: hidden;
+    flex:1; display:flex; flex-direction:column;
+    background:#fff; border-radius:12px;
+    box-shadow:0 1px 3px rgba(0,0,0,.12);
+    overflow:hidden; min-width:0;
   }
-  .chat-panel header {
-    padding: 1rem 1.25rem; background: #1a73e8; color: #fff;
-    font-weight: 600; font-size: 1.1rem; display: flex; align-items: center; gap: .5rem;
+  .chat-panel > header {
+    padding:.75rem 1.25rem; background:var(--azul); color:#fff;
+    font-weight:600; font-size:.95rem;
   }
-  .chat-panel header small { font-weight: 400; opacity: .8; font-size: .75rem; }
-  .messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
-  .msg { max-width: 85%; padding: .7rem 1rem; border-radius: 12px; line-height: 1.45; font-size: .95rem; }
-  .user { align-self: flex-end; background: #1a73e8; color: #fff; border-bottom-right-radius: 4px; }
-  .bot { align-self: flex-start; background: #f1f3f5; color: #1a1a1a; border-bottom-left-radius: 4px; }
-  .bot.loading { opacity: .6; }
-  .bot .thinking { font-size: .8rem; color: #666; margin-top: .3rem; }
-  .error { align-self: flex-start; background: #fff0f0; color: #c00; border: 1px solid #fcc; }
-  .input-area { display: flex; gap: .5rem; padding: 1rem; border-top: 1px solid #e9ecef; }
-  .input-area input {
-    flex: 1; padding: .65rem 1rem; border: 1px solid #dee2e6; border-radius: 24px;
-    font-size: .95rem; outline: none; transition: border .15s;
-  }
-  .input-area input:focus { border-color: #1a73e8; }
-  .input-area button {
-    padding: .65rem 1.25rem; background: #1a73e8; color: #fff; border: none;
-    border-radius: 24px; font-size: .95rem; cursor: pointer; transition: background .15s;
-  }
-  .input-area button:hover { background: #1558b0; }
-  .input-area button:disabled { background: #a0c4ff; cursor: not-allowed; }
-
   .persona-bar {
-    display: flex; gap: .5rem; padding: .5rem 1rem;
-    border-bottom: 1px solid #e9ecef; background: #fafbfc;
+    display:flex; gap:.4rem; padding:.45rem 1rem;
+    border-bottom:1px solid var(--borda); background:#fafbfc;
+    flex-wrap:wrap; align-items:center;
   }
+  .persona-bar span { font-size:.75rem; color:#888; }
   .persona-btn {
-    padding: .3rem .7rem; border-radius: 16px; border: 1px solid #dee2e6;
-    background: #fff; font-size: .8rem; cursor: pointer; transition: all .15s;
+    padding:.25rem .65rem; border-radius:16px;
+    border:1px solid var(--borda); background:#fff;
+    font-size:.78rem; cursor:pointer; transition:all .15s;
   }
-  .persona-btn:hover { border-color: #1a73e8; color: #1a73e8; }
-  .persona-btn.active { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+  .persona-btn:hover  { border-color:var(--azul); color:var(--azul); }
+  .persona-btn.active { background:var(--azul); color:#fff; border-color:var(--azul); }
 
+  .messages {
+    flex:1; overflow-y:auto; padding:1rem;
+    display:flex; flex-direction:column; gap:.75rem;
+  }
+  .msg { max-width:85%; padding:.65rem 1rem; border-radius:12px; line-height:1.55; font-size:.9rem; }
+  .user  { align-self:flex-end; background:var(--azul); color:#fff; border-bottom-right-radius:4px; }
+  .bot   { align-self:flex-start; background:#f1f3f5; color:var(--texto); border-bottom-left-radius:4px; }
+  .bot.clickable { cursor:pointer; }
+  .bot.clickable:hover  { background:#e8edf2; }
+  .bot.selected  { outline:2px solid var(--azul); background:#eaf2ff; }
+  .error { align-self:flex-start; background:#fff0f0; color:#c00; border:1px solid #fcc; }
+
+  /* Markdown dentro das respostas do bot */
+  .bot p          { margin-bottom:.4rem; }
+  .bot p:last-child { margin-bottom:0; }
+  .bot ul, .bot ol { margin:.3rem 0 .3rem 1.2rem; }
+  .bot li         { margin-bottom:.15rem; }
+  .bot strong     { font-weight:700; }
+  .bot em         { font-style:italic; }
+  .bot code       { background:rgba(0,0,0,.07); padding:.1rem .3rem; border-radius:3px; font-family:monospace; font-size:.85em; }
+  .bot pre        { background:#1a202c; color:#e2e8f0; padding:.6rem .8rem; border-radius:6px; overflow-x:auto; margin:.4rem 0; font-size:.82em; }
+  .bot pre code   { background:none; padding:0; }
+  .bot h1,.bot h2,.bot h3 { font-weight:700; margin:.4rem 0 .2rem; }
+
+  /* ── Input + painel de ingestão ── */
+  .bottom-area { border-top:1px solid var(--borda); }
+
+  .ingest-toggle {
+    display:flex; align-items:center; gap:.4rem;
+    padding:.35rem 1rem; cursor:pointer;
+    font-size:.78rem; color:#666; background:#fafbfc;
+    border-bottom:1px solid transparent; user-select:none;
+    transition:all .15s;
+  }
+  .ingest-toggle:hover { color:var(--azul); }
+  .ingest-toggle.open  { color:var(--azul); border-bottom-color:var(--borda); }
+  .ingest-toggle .arrow { transition:transform .2s; }
+  .ingest-toggle.open .arrow { transform:rotate(180deg); }
+
+  .ingest-panel {
+    display:none; padding:.6rem 1rem;
+    background:#f8faff; border-bottom:1px solid var(--borda);
+  }
+  .ingest-panel.open { display:flex; gap:.5rem; align-items:flex-start; }
+  .ingest-panel input {
+    width:180px; flex-shrink:0;
+    padding:.4rem .7rem; border:1px solid var(--borda);
+    border-radius:8px; font-size:.8rem; outline:none;
+  }
+  .ingest-panel input:focus { border-color:var(--azul); }
+  .ingest-panel textarea {
+    flex:1; resize:vertical; min-height:60px; max-height:120px;
+    padding:.4rem .7rem; border:1px solid var(--borda);
+    border-radius:8px; font-size:.8rem; outline:none; font-family:inherit;
+  }
+  .ingest-panel textarea:focus { border-color:var(--azul); }
+  .ingest-panel button {
+    padding:.4rem .9rem; background:var(--verde); color:#fff;
+    border:none; border-radius:8px; font-size:.8rem; cursor:pointer;
+    white-space:nowrap; transition:background .15s;
+  }
+  .ingest-panel button:hover    { background:#276749; }
+  .ingest-panel button:disabled { background:#9ae6b4; cursor:not-allowed; }
+  .ingest-status { font-size:.75rem; margin-top:.3rem; color:var(--verde); }
+
+  .input-area {
+    display:flex; gap:.5rem; padding:.75rem 1rem;
+  }
+  .input-area input {
+    flex:1; padding:.6rem 1rem; border:1px solid var(--borda);
+    border-radius:24px; font-size:.9rem; outline:none; transition:border .15s;
+  }
+  .input-area input:focus { border-color:var(--azul); }
+  .input-area button {
+    padding:.6rem 1.1rem; background:var(--azul); color:#fff;
+    border:none; border-radius:24px; font-size:.9rem; cursor:pointer;
+    transition:background .15s; white-space:nowrap;
+  }
+  .input-area button:hover    { background:var(--azul-esc); }
+  .input-area button:disabled { background:#a0c4ff; cursor:not-allowed; }
+
+  /* ── Painel de debug ── */
   .debug-panel {
-    width: 400px; display: flex; flex-direction: column;
-    background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.12);
-    overflow: hidden;
+    width:420px; flex-shrink:0; display:flex; flex-direction:column;
+    background:#fff; border-radius:12px;
+    box-shadow:0 1px 3px rgba(0,0,0,.12); overflow:hidden;
   }
-  .debug-panel header {
-    padding: .85rem 1rem; background: #2d3748; color: #fff;
-    font-weight: 600; font-size: .95rem;
+  .debug-panel > header {
+    padding:.65rem 1rem; background:#2d3748; color:#fff;
+    font-weight:600; font-size:.88rem;
   }
-  .debug-content { flex: 1; overflow-y: auto; padding: .75rem; }
-  .debug-content .empty {
-    text-align: center; color: #999; font-size: .9rem; margin-top: 3rem;
+  .debug-tabs {
+    display:flex; border-bottom:1px solid var(--borda); background:#f7f8fa;
   }
-  .debug-step {
-    padding: .6rem .75rem; margin-bottom: .5rem; border-radius: 8px;
-    font-size: .85rem; border-left: 3px solid #1a73e8; background: #f8faff;
+  .debug-tab {
+    flex:1; padding:.4rem .2rem; font-size:.73rem; font-weight:600;
+    text-align:center; cursor:pointer;
+    border-bottom:2px solid transparent; color:#666; transition:all .15s;
   }
-  .debug-step .label { font-weight: 600; color: #2d3748; margin-bottom: .2rem; }
-  .debug-step .value { color: #555; white-space: pre-wrap; word-break: break-word; font-family: 'SF Mono', 'Cascadia Code', monospace; font-size: .8rem; }
-  .debug-step.info { border-left-color: #1a73e8; }
-  .debug-step.warn { border-left-color: #e8a71a; background: #fffcf0; }
-  .debug-step.block { border-left-color: #e53e3e; background: #fff5f5; }
-  .debug-step.pass { border-left-color: #38a169; background: #f0fff4; }
-  .debug-step .collapse-btn {
-    background: none; border: none; color: #1a73e8; cursor: pointer;
-    font-size: .8rem; padding: 0; margin-top: .3rem;
-  }
-  .debug-step .collapsed { display: none; }
+  .debug-tab.active { border-bottom-color:var(--azul); color:var(--azul); }
+  .debug-body { flex:1; overflow-y:auto; }
+  .tab-content { display:none; padding:.7rem; }
+  .tab-content.active { display:block; }
 
-  @media (max-width: 768px) {
-    .app { flex-direction: column; height: 95vh; }
-    .debug-panel { width: 100%; max-height: 40vh; }
+  /* Blocos colapsáveis do pipeline */
+  .debug-block {
+    margin-bottom:.55rem; border-radius:8px;
+    border-left:3px solid var(--azul); background:#f8faff; overflow:hidden;
+  }
+  .debug-block.rag-ok    { border-left-color:var(--verde);   background:#f0fff4; }
+  .debug-block.rag-miss  { border-left-color:var(--laranja); background:#fffcf0; }
+  .debug-block.guard-ok  { border-left-color:var(--verde);   background:#f0fff4; }
+  .debug-block.guard-blk { border-left-color:var(--vermelho);background:#fff5f5; }
+  .debug-block.collapsed .debug-block-body { display:none; }
+
+  .debug-block-header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:.45rem .7rem; cursor:pointer; user-select:none;
+  }
+  .debug-block-title {
+    font-weight:700; font-size:.8rem; display:flex; align-items:center; gap:.3rem;
+  }
+  .debug-block-subtitle { font-size:.7rem; color:#777; font-weight:400; margin-top:.1rem; }
+  .debug-block-toggle { color:#aaa; font-size:.72rem; }
+
+  .debug-block-body    { padding:0 .7rem .55rem; font-size:.78rem; color:#444; }
+  .debug-block-body .value {
+    background:#fff; border:1px solid #e2e8f0; border-radius:6px;
+    padding:.35rem .55rem; font-family:'SF Mono','Cascadia Code','Fira Code',monospace;
+    font-size:.74rem; white-space:pre-wrap; word-break:break-word;
+    max-height:110px; overflow-y:auto; margin-top:.3rem;
+  }
+  .debug-block-body .conceito {
+    font-size:.73rem; color:#555; background:rgba(26,115,232,.07);
+    border-left:2px solid var(--azul); padding:.25rem .45rem;
+    border-radius:0 4px 4px 0; margin-top:.3rem; line-height:1.4;
+  }
+
+  /* Blocos de código (aba Código) */
+  .code-block { margin-bottom:.55rem; border-radius:8px; overflow:hidden; border:1px solid var(--borda); }
+  .code-block-header {
+    background:#2d3748; color:#e2e8f0;
+    padding:.35rem .7rem; font-size:.72rem; font-weight:600;
+  }
+  .code-block pre {
+    background:#1a202c; color:#e2e8f0; padding:.55rem .7rem;
+    font-family:'SF Mono','Cascadia Code',monospace; font-size:.74rem;
+    overflow-x:auto; line-height:1.55; margin:0;
+  }
+  .code-block pre .kw  { color:#f6ad55; }
+  .code-block pre .str { color:#68d391; }
+  .code-block pre .cm  { color:#718096; font-style:italic; }
+  .code-block pre .fn  { color:#90cdf4; }
+  .code-block pre .op  { color:#fc8181; }
+
+  /* ── Aba Grafo ── */
+  .graph-container {
+    padding:.7rem; text-align:center;
+  }
+  .graph-container .mermaid {
+    background:#fff; border-radius:8px;
+    border:1px solid var(--borda); padding:.75rem;
+    display:inline-block; width:100%;
+  }
+  .graph-legend {
+    display:flex; flex-wrap:wrap; gap:.4rem;
+    justify-content:center; margin-top:.6rem; font-size:.72rem;
+  }
+  .graph-legend-item {
+    display:flex; align-items:center; gap:.25rem;
+  }
+  .legend-dot {
+    width:10px; height:10px; border-radius:50%; flex-shrink:0;
+  }
+  .graph-path-info {
+    font-size:.75rem; margin-top:.5rem; text-align:left;
+    padding:.4rem .6rem; border-radius:6px;
+    background:#f8faff; border:1px solid #c5d8fd; color:#1a73e8;
+    display:none;
+  }
+  .graph-path-info.visible { display:block; }
+
+  /* Estado vazio */
+  .empty-state {
+    text-align:center; color:#999; font-size:.85rem;
+    padding:2rem 1rem; line-height:1.6;
+  }
+  .empty-state .big { font-size:1.8rem; margin-bottom:.4rem; }
+
+  @media (max-width:900px) {
+    .main { flex-direction:column; }
+    .debug-panel { width:100%; max-height:45vh; }
   }
 </style>
 </head>
 <body>
-<div class="app">
+
+<div class="header">
+  <div>
+    <h1>&#x1F916; Agente Educacional com LangChain</h1>
+    <p>Do Piau&#xed; para o Mundo &#x2014; Palestra ao vivo</p>
+  </div>
+  <span class="tag">LangChain + LangGraph + RAG</span>
+</div>
+
+<div class="pipeline" id="pipeline">
+  <div class="pipe-step rag"    data-step="rag">&#x1F50D; RAG</div>
+  <div class="pipe-arrow">&#x2192;</div>
+  <div class="pipe-step prompt" data-step="prompt">&#x1F4DD; Prompt</div>
+  <div class="pipe-arrow">&#x2192;</div>
+  <div class="pipe-step llm"    data-step="llm">&#x1F9E0; LLM</div>
+  <div class="pipe-arrow">&#x2192;</div>
+  <div class="pipe-step guard"  data-step="guard">&#x1F6E1; Guardrail</div>
+  <div class="pipe-arrow">&#x2192;</div>
+  <span style="font-size:.75rem;color:#555;font-weight:600;">Resposta</span>
+</div>
+
+<div class="main">
+
+  <!-- ── Chat ── -->
   <div class="chat-panel">
-    <header>
-      <span>&#x1F916;</span> Agente Educacional
-      <small>Piauí Para o Mundo</small>
-    </header>
+    <header>&#x1F4AC; Converse com o agente</header>
     <div class="persona-bar">
+      <span>Persona:</span>
       <button class="persona-btn" data-persona="ensino_medio">Ensino M&#xe9;dio</button>
       <button class="persona-btn" data-persona="crianca">Crian&#xe7;a</button>
       <button class="persona-btn" data-persona="vestibular">Vestibular</button>
       <button class="persona-btn" data-persona="simples">Simples</button>
     </div>
-    <div class="messages" id="messages"></div>
-    <div class="input-area">
-      <input type="text" id="input" placeholder="Pergunte algo sobre os dados do Piau&#xed;..." autofocus>
-      <button id="sendBtn">Enviar</button>
-    </div>
-  </div>
-  <div class="debug-panel" id="debugPanel">
-    <header>&#x1F50D; Debug</header>
-    <div class="debug-content" id="debugContent">
-      <div class="empty">Clique em uma resposta do bot para ver os detalhes.</div>
-    </div>
-  </div>
-</div>
-<script>
-const input = document.getElementById('input');
-const sendBtn = document.getElementById('sendBtn');
-const messagesEl = document.getElementById('messages');
-const debugContent = document.getElementById('debugContent');
-let currentPersona = 'ensino_medio';
-let debugHistory = {};
 
+    <div class="messages" id="messages">
+      <div class="msg bot">
+        &#x1F44B; Ol&#xe1;! Sou um agente educacional constru&#xed;do com <strong>LangChain</strong> e <strong>LangGraph</strong>.<br><br>
+        Pergunte sobre dados dos estados brasileiros &#x2014; ou cole qualquer conte&#xfa;do novo no painel abaixo e o agente aprender&#xe1; na hora. &#x1F9E0;
+      </div>
+    </div>
+
+    <div class="bottom-area">
+      <!-- Painel de ingestão -->
+      <div class="ingest-toggle" id="ingestToggle" onclick="toggleIngest()">
+        <span class="arrow">&#x25BC;</span>
+        <span>&#x2795; Adicionar conhecimento ao agente (demo RAG din&#xe2;mico)</span>
+      </div>
+      <div class="ingest-panel" id="ingestPanel">
+        <input type="text" id="ingestTitulo" placeholder="Título / tema" />
+        <textarea id="ingestTexto" placeholder="Cole aqui qualquer texto: conceito de LangChain, trecho de artigo, matéria da aula..."></textarea>
+        <div style="display:flex;flex-direction:column;gap:.3rem;align-items:flex-end">
+          <button id="ingestBtn" onclick="ingestir()">&#x1F4E5; Ingerir</button>
+          <span class="ingest-status" id="ingestStatus"></span>
+        </div>
+      </div>
+
+      <div class="input-area">
+        <input type="text" id="input" placeholder="Ex: Qual é o PIB do Piauí?" autofocus>
+        <button id="sendBtn">Enviar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Debug ── -->
+  <div class="debug-panel">
+    <header>&#x1F50D; Por dentro do agente</header>
+    <div class="debug-tabs">
+      <div class="debug-tab active" data-tab="pipeline">&#x26A1; Pipeline</div>
+      <div class="debug-tab"       data-tab="grafo">&#x1F5FA; Grafo</div>
+      <div class="debug-tab"       data-tab="codigo">&#x1F4BB; C&#xf3;digo</div>
+      <div class="debug-tab"       data-tab="conceitos">&#x1F4D6; Conceitos</div>
+    </div>
+    <div class="debug-body">
+
+      <!-- Pipeline -->
+      <div class="tab-content active" id="tab-pipeline">
+        <div class="empty-state">
+          <div class="big">&#x1F4AC;</div>
+          Envie uma pergunta e clique na resposta do bot para ver cada etapa aqui.
+        </div>
+      </div>
+
+      <!-- Grafo -->
+      <div class="tab-content" id="tab-grafo">
+        <div class="graph-container" id="graphContainer">
+          <div class="empty-state">
+            <div class="big">&#x1F5FA;</div>
+            Carregando grafo...
+          </div>
+        </div>
+      </div>
+
+      <!-- Código -->
+      <div class="tab-content" id="tab-codigo">
+        <div class="code-block">
+          <div class="code-block-header">&#x1F517; chains/qa_chain.py &#x2014; chain principal</div>
+          <pre><span class="cm"># O operador | conecta os componentes em sequência</span>
+<span class="kw">def</span> <span class="fn">construir_chain</span>(persona):
+    <span class="kw">return</span> (
+        <span class="fn">montar_prompt</span>(persona)  <span class="cm"># PromptTemplate</span>
+        <span class="op">|</span> <span class="fn">Soberano</span>()           <span class="cm"># BaseChatModel</span>
+        <span class="op">|</span> <span class="fn">StrOutputParser</span>()    <span class="cm"># parser</span>
+    )</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-block-header">&#x1F5FA; graph/agent_graph.py &#x2014; grafo LangGraph</div>
+          <pre><span class="kw">class</span> <span class="fn">Estado</span>(TypedDict):
+    pergunta: <span class="fn">str</span>    <span class="cm"># entrada do aluno</span>
+    contexto: <span class="fn">str</span>    <span class="cm"># resultado do RAG</span>
+    resposta: <span class="fn">str</span>    <span class="cm"># saída final</span>
+    tentativas: <span class="fn">int</span>  <span class="cm"># contador de retries</span>
+
+grafo.<span class="fn">add_node</span>(<span class="str">"recuperar"</span>, recuperar)
+grafo.<span class="fn">add_node</span>(<span class="str">"buscar_mais"</span>, buscar_mais)
+grafo.<span class="fn">add_node</span>(<span class="str">"responder"</span>, responder_no)
+grafo.<span class="fn">add_conditional_edges</span>(<span class="str">"recuperar"</span>, decidir)
+grafo.<span class="fn">add_edge</span>(<span class="str">"buscar_mais"</span>, <span class="str">"responder"</span>)
+grafo.<span class="fn">add_edge</span>(<span class="str">"responder"</span>, END)</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-block-header">&#x1F6E1; guardrails/rules.py &#x2014; dois níveis</div>
+          <pre><span class="cm"># Nível 1: instrução no prompt (guardrail interno)</span>
+REGRA = <span class="str">"Só responda com base no Contexto..."</span>
+
+<span class="cm"># Nível 2: validação no código (guardrail externo)</span>
+<span class="kw">def</span> <span class="fn">validar</span>(resposta, contexto):
+    <span class="kw">if not</span> contexto:
+        <span class="kw">return</span> FRASE_FALLBACK
+    <span class="kw">return</span> resposta</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-block-header">&#x1F4E5; rag/retriever.py &#x2014; ingestão dinâmica</div>
+          <pre><span class="kw">def</span> <span class="fn">adicionar</span>(self, texto, titulo):
+    doc = <span class="fn">Document</span>(
+        page_content=texto,
+        metadata={<span class="str">"titulo"</span>: titulo,
+                  <span class="str">"fonte"</span>: <span class="str">"ingestão_manual"</span>}
+    )
+    self._vectorstore.<span class="fn">add_documents</span>([doc])
+    <span class="cm"># O agente já responde sobre o novo conteúdo</span></pre>
+        </div>
+      </div>
+
+      <!-- Conceitos -->
+      <div class="tab-content" id="tab-conceitos">
+        <div style="padding:.3rem 0">
+
+          <div class="debug-block" style="border-left-color:var(--azul)">
+            <div class="debug-block-header" onclick="toggleBlock(this)">
+              <div><div class="debug-block-title">&#x1F50D; RAG &#x2014; Retrieval-Augmented Generation</div>
+              <div class="debug-block-subtitle">Geração aumentada por recuperação</div></div>
+              <span class="debug-block-toggle">&#x25BC;</span>
+            </div>
+            <div class="debug-block-body">
+              <div class="conceito">Em vez de o modelo "lembrar" os dados, ele <strong>consulta uma base a cada resposta</strong>. O texto recuperado entra no prompt como contexto — eliminando invenções sobre o domínio.</div>
+              <div class="value">Pergunta → Embedding → Busca vetorial → Documentos relevantes</div>
+            </div>
+          </div>
+
+          <div class="debug-block" style="border-left-color:#b7791f;background:#fef9e7">
+            <div class="debug-block-header" onclick="toggleBlock(this)">
+              <div><div class="debug-block-title">&#x1F4DD; PromptTemplate</div>
+              <div class="debug-block-subtitle">chains/prompt.py</div></div>
+              <span class="debug-block-toggle">&#x25BC;</span>
+            </div>
+            <div class="debug-block-body">
+              <div class="conceito">Template com variáveis (<code>{contexto}</code>, <code>{pergunta}</code>, <code>{persona}</code>) preenchidas em tempo de execução. No LangChain, prompts são objetos combináveis com <code>|</code>.</div>
+            </div>
+          </div>
+
+          <div class="debug-block" style="border-left-color:var(--verde);background:#e6fffa">
+            <div class="debug-block-header" onclick="toggleBlock(this)">
+              <div><div class="debug-block-title">&#x1F9E0; BaseChatModel &#x2014; interface padrão de LLM</div>
+              <div class="debug-block-subtitle">llm/soberano.py</div></div>
+              <span class="debug-block-toggle">&#x25BC;</span>
+            </div>
+            <div class="debug-block-body">
+              <div class="conceito">O <strong>Soberano 1.1</strong> implementa <code>BaseChatModel</code>. Isso o torna compatível com qualquer chain ou ferramenta do ecossistema LangChain — mesmo sendo uma API personalizada na Mandu.</div>
+            </div>
+          </div>
+
+          <div class="debug-block" style="border-left-color:var(--vermelho);background:#fff5f5">
+            <div class="debug-block-header" onclick="toggleBlock(this)">
+              <div><div class="debug-block-title">&#x1F6E1; Guardrails &#x2014; dois níveis</div>
+              <div class="debug-block-subtitle">guardrails/rules.py</div></div>
+              <span class="debug-block-toggle">&#x25BC;</span>
+            </div>
+            <div class="debug-block-body">
+              <div class="conceito"><strong>Nível 1 (prompt):</strong> instrui o modelo a recusar quando não tiver informação.<br><strong>Nível 2 (código):</strong> bloqueia a resposta se o contexto estiver vazio, <em>independente do que o modelo disse</em>.</div>
+            </div>
+          </div>
+
+          <div class="debug-block" style="border-left-color:var(--roxo);background:#faf5ff">
+            <div class="debug-block-header" onclick="toggleBlock(this)">
+              <div><div class="debug-block-title">&#x1F5FA; StateGraph &#x2014; LangGraph</div>
+              <div class="debug-block-subtitle">graph/agent_graph.py</div></div>
+              <span class="debug-block-toggle">&#x25BC;</span>
+            </div>
+            <div class="debug-block-body">
+              <div class="conceito">Fluxos com <strong>decisões condicionais</strong> e loops. O estado (<code>TypedDict</code>) trafega entre os nós. Arestas condicionais decidem dinamicamente qual nó vem a seguir.</div>
+            </div>
+          </div>
+
+          <div class="debug-block" style="border-left-color:var(--verde);background:#f0fff4">
+            <div class="debug-block-header" onclick="toggleBlock(this)">
+              <div><div class="debug-block-title">&#x1F4E5; Ingestão Dinâmica</div>
+              <div class="debug-block-subtitle">rag/retriever.py + /ingest</div></div>
+              <span class="debug-block-toggle">&#x25BC;</span>
+            </div>
+            <div class="debug-block-body">
+              <div class="conceito">O método <code>add_documents()</code> do FAISS adiciona vetores ao índice em memória sem reiniciar o servidor. É assim que sistemas RAG em produção incorporam novos documentos em tempo real.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- debug-body -->
+  </div><!-- debug-panel -->
+
+</div><!-- main -->
+
+<script>
+// ── Configuração do marked.js ─────────────────────────────────────────────────
+marked.setOptions({ breaks: true, gfm: true });
+
+// ── Configuração do mermaid.js ────────────────────────────────────────────────
+mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+
+// ── Estado global ─────────────────────────────────────────────────────────────
+const input      = document.getElementById('input');
+const sendBtn    = document.getElementById('sendBtn');
+const messagesEl = document.getElementById('messages');
+let currentPersona  = 'ensino_medio';
+let debugHistory    = {};
+let selectedMsgEl   = null;
+let graphData       = null;
+
+// ── Personas ──────────────────────────────────────────────────────────────────
 document.querySelectorAll('.persona-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelector('.persona-btn.active')?.classList.remove('active');
@@ -128,134 +548,276 @@ document.querySelectorAll('.persona-btn').forEach(btn => {
     currentPersona = btn.dataset.persona;
   });
 });
-document.querySelector('.persona-btn[data-persona="ensino_medio"]').classList.add('active');
+document.querySelector('[data-persona="ensino_medio"]').classList.add('active');
 
-function addMessage(text, type, msgId) {
+// ── Abas ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.debug-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.debug-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const el = document.getElementById('tab-' + tab.dataset.tab);
+    el.classList.add('active');
+    if (tab.dataset.tab === 'grafo' && graphData) renderGraph(graphData);
+  });
+});
+
+// ── Blocos colapsáveis ────────────────────────────────────────────────────────
+function toggleBlock(header) {
+  const block = header.closest('.debug-block');
+  block.classList.toggle('collapsed');
+  header.querySelector('.debug-block-toggle').textContent =
+    block.classList.contains('collapsed') ? '▶' : '▼';
+}
+window.toggleBlock = toggleBlock;
+
+// ── Pipeline highlight ────────────────────────────────────────────────────────
+function highlightPipeline(step) {
+  document.querySelectorAll('.pipe-step').forEach(s => s.classList.remove('active'));
+  if (step) document.querySelector(`.pipe-step[data-step="${step}"]`)?.classList.add('active');
+}
+
+// ── Mensagens ─────────────────────────────────────────────────────────────────
+function addMessage(html, type, msgId) {
   const div = document.createElement('div');
   div.className = 'msg ' + type;
-  div.textContent = text;
-  if (type === 'bot' && msgId) {
-    div.dataset.msgId = msgId;
-    div.style.cursor = 'pointer';
-    div.title = 'Clique para ver detalhes';
-    div.addEventListener('click', () => showDebug(msgId));
+  if (type === 'bot') {
+    div.innerHTML = marked.parse(html);
+    if (msgId) {
+      div.dataset.msgId = msgId;
+      div.classList.add('clickable');
+      div.title = 'Clique para ver o pipeline';
+      div.addEventListener('click', () => selectMessage(div, msgId));
+    }
+  } else {
+    div.textContent = html; // usuário: sem markdown (segurança)
   }
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
   return div;
 }
 
+function selectMessage(el, msgId) {
+  selectedMsgEl?.classList.remove('selected');
+  el.classList.add('selected');
+  selectedMsgEl = el;
+  // Muda para aba pipeline
+  document.querySelectorAll('.debug-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelector('[data-tab="pipeline"]').classList.add('active');
+  document.getElementById('tab-pipeline').classList.add('active');
+  renderPipeline(debugHistory[msgId]);
+  if (graphData) highlightGraphPath(debugHistory[msgId]);
+}
+
 function showLoading() {
   const div = document.createElement('div');
-  div.className = 'msg bot loading';
-  div.id = 'loadingMsg';
-  div.innerHTML = '<span class="thinking">&#x1F4AD; Pensando...</span>';
+  div.className = 'msg bot'; div.id = 'loadingMsg'; div.style.opacity = '.6';
+  div.textContent = '⏳ Pensando...';
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
+function removeLoading() { document.getElementById('loadingMsg')?.remove(); }
 
-function removeLoading() {
-  const el = document.getElementById('loadingMsg');
-  if (el) el.remove();
+// ── Renderizar pipeline ───────────────────────────────────────────────────────
+function renderPipeline(info) {
+  const esc = t => { const d = document.createElement('div'); d.textContent = t||''; return d.innerHTML; };
+  const ragOk = !!info?.contexto?.trim();
+  const docs  = ragOk ? info.contexto.split('\n\n') : [];
+
+  document.getElementById('tab-pipeline').innerHTML = `
+    <div class="debug-block">
+      <div class="debug-block-header" onclick="toggleBlock(this)">
+        <div><div class="debug-block-title">&#x1F4AC; Pergunta</div></div>
+        <span class="debug-block-toggle">&#x25BC;</span>
+      </div>
+      <div class="debug-block-body">
+        <div class="value">${esc(info.pergunta)}</div>
+        <div class="conceito">Persona: <strong>${esc(info.persona)}</strong></div>
+      </div>
+    </div>
+
+    <div class="debug-block ${ragOk ? 'rag-ok' : 'rag-miss'}">
+      <div class="debug-block-header" onclick="toggleBlock(this)">
+        <div>
+          <div class="debug-block-title">${ragOk ? '✅' : '⚠️'} RAG — ${ragOk ? docs.length + ' doc(s) encontrado(s)' : 'Nenhum contexto'}</div>
+          <div class="debug-block-subtitle">rag/retriever.py — busca vetorial FAISS</div>
+        </div>
+        <span class="debug-block-toggle">&#x25BC;</span>
+      </div>
+      <div class="debug-block-body">
+        ${ragOk
+          ? `<div class="value">${esc(info.contexto)}</div><div class="conceito">🔍 ${docs.length} trecho(s) semanticamente próximos.</div>`
+          : `<div class="conceito">⚠️ Sem documentos — o guardrail vai atuar.</div>`}
+      </div>
+    </div>
+
+    <div class="debug-block collapsed">
+      <div class="debug-block-header" onclick="toggleBlock(this)">
+        <div>
+          <div class="debug-block-title">&#x1F4DD; Prompt enviado ao LLM</div>
+          <div class="debug-block-subtitle">chains/prompt.py — PromptTemplate</div>
+        </div>
+        <span class="debug-block-toggle">&#x25B6;</span>
+      </div>
+      <div class="debug-block-body">
+        <div class="value">${esc(info.prompt_montado)}</div>
+        <div class="conceito">📋 Template preenchido: persona + contexto + regra + pergunta.</div>
+      </div>
+    </div>
+
+    <div class="debug-block collapsed">
+      <div class="debug-block-header" onclick="toggleBlock(this)">
+        <div>
+          <div class="debug-block-title">&#x1F9E0; Resposta bruta do LLM</div>
+          <div class="debug-block-subtitle">llm/soberano.py — BaseChatModel</div>
+        </div>
+        <span class="debug-block-toggle">&#x25B6;</span>
+      </div>
+      <div class="debug-block-body">
+        <div class="value">${esc(info.resposta_bruta)}</div>
+        <div class="conceito">📤 Saída direta do modelo, antes de qualquer validação.</div>
+      </div>
+    </div>
+
+    <div class="debug-block ${info.guardrail_aplicado ? 'guard-blk' : 'guard-ok'}">
+      <div class="debug-block-header" onclick="toggleBlock(this)">
+        <div>
+          <div class="debug-block-title">${info.guardrail_aplicado ? '⛔ Guardrail — BLOQUEADO' : '✅ Guardrail — aprovado'}</div>
+          <div class="debug-block-subtitle">guardrails/rules.py — nível 2 (código)</div>
+        </div>
+        <span class="debug-block-toggle">&#x25BC;</span>
+      </div>
+      <div class="debug-block-body">
+        <div class="conceito">${info.guardrail_aplicado
+          ? '⛔ Contexto vazio — resposta substituída pela mensagem padrão.'
+          : '✅ Contexto presente — resposta aprovada sem alterações.'}</div>
+      </div>
+    </div>
+
+    <div class="debug-block guard-ok">
+      <div class="debug-block-header" onclick="toggleBlock(this)">
+        <div><div class="debug-block-title">&#x1F4EC; Resposta final</div></div>
+        <span class="debug-block-toggle">&#x25BC;</span>
+      </div>
+      <div class="debug-block-body">
+        <div class="value">${esc(info.resposta_final)}</div>
+      </div>
+    </div>
+  `;
 }
 
-function showDebug(msgId) {
-  const info = debugHistory[msgId];
-  if (!info) return;
-
-  const steps = [];
-  const iconMap = { info: '&#x2139;&#xFE0F;', warn: '&#x26A0;&#xFE0F;', block: '&#x26D4;', pass: '&#x2705;' };
-
-  steps.push(`
-    <div class="debug-step info">
-      <div class="label">${iconMap.info} Pergunta</div>
-      <div class="value">${escapeHtml(info.pergunta)}</div>
-    </div>
-  `);
-
-  if (info.contexto) {
-    const docs = info.contexto.split('\n\n');
-    steps.push(`
-      <div class="debug-step pass">
-        <div class="label">${iconMap.pass} RAG &#x2014; ${docs.length} documento(s) encontrado(s)</div>
-        <div class="value" id="ragValue">${escapeHtml(info.contexto)}</div>
-        <button class="collapse-btn" onclick="toggleCollapse('ragValue', this)">${docs.length > 3 ? 'Mostrar mais' : ''}</button>
-      </div>
-    `);
-    if (docs.length > 3) {
-      steps.push(`<style>#ragValue { max-height: 4.5em; overflow: hidden; }</style>`);
+// ── Grafo ─────────────────────────────────────────────────────────────────────
+async function loadGraph() {
+  try {
+    const res = await fetch('/graph');
+    graphData = await res.json();
+    // Pré-renderiza se a aba grafo já estiver ativa
+    if (document.querySelector('[data-tab="grafo"]').classList.contains('active')) {
+      renderGraph(graphData);
     }
-  } else {
-    steps.push(`
-      <div class="debug-step warn">
-        <div class="label">${iconMap.warn} RAG &#x2014; Nenhum documento encontrado</div>
-        <div class="value">Contexto vazio: o guardrail vai bloquear a resposta.</div>
-      </div>
-    `);
+  } catch(e) { console.warn('Não foi possível carregar o grafo:', e); }
+}
+
+async function renderGraph(data, highlightedPath) {
+  const container = document.getElementById('graphContainer');
+
+  let mermaidStr = data.mermaid;
+  if (highlightedPath === 'buscar_mais') {
+    mermaidStr += '\n  style buscar_mais fill:#fef9e7,stroke:#e8a71a,stroke-width:3px,color:#1a1a1a';
+    mermaidStr += '\n  style recuperar  fill:#e8f0fe,stroke:#1a73e8,stroke-width:3px,color:#1a1a1a';
+  } else if (highlightedPath === 'direto') {
+    mermaidStr += '\n  style recuperar  fill:#e8f0fe,stroke:#1a73e8,stroke-width:3px,color:#1a1a1a';
+    mermaidStr += '\n  style responder  fill:#e6fffa,stroke:#38a169,stroke-width:3px,color:#1a1a1a';
   }
 
-  steps.push(`
-    <div class="debug-step info">
-      <div class="label">${iconMap.info} Persona</div>
-      <div class="value">${escapeHtml(info.persona)}</div>
-    </div>
-  `);
+  try {
+    // mermaid v10+: render() retorna o SVG como string — não precisa de elemento no DOM
+    const uniqueId = 'mg' + Date.now();
+    const { svg } = await mermaid.render(uniqueId, mermaidStr);
 
-  steps.push(`
-    <div class="debug-step info">
-      <div class="label">${iconMap.info} Prompt enviado ao LLM</div>
-      <div class="value" id="promptValue">${escapeHtml(info.prompt_montado)}</div>
-      <button class="collapse-btn" onclick="toggleCollapse('promptValue', this)">Mostrar mais</button>
-    </div>
-  `);
+    const pathInfo = highlightedPath ? `
+      <div class="graph-path-info visible">
+        ${highlightedPath === 'buscar_mais'
+          ? '⚠️ Caminho: recuperar → buscar_mais → responder (contexto vazio na 1ª busca)'
+          : '✅ Caminho: recuperar → responder (contexto encontrado na 1ª busca)'}
+      </div>` : '';
 
-  steps.push(`
-    <div class="debug-step info">
-      <div class="label">${iconMap.info} Resposta bruta do LLM</div>
-      <div class="value">${escapeHtml(info.resposta_bruta)}</div>
-    </div>
-  `);
-
-  if (info.guardrail_aplicado) {
-    steps.push(`
-      <div class="debug-step block">
-        <div class="label">${iconMap.block} Guardrail &#x2014; Resposta BLOQUEADA</div>
-        <div class="value">Contexto vazio ou insuficiente. Resposta substitu&#xed;da pela mensagem padr&#xe3;o.</div>
+    container.innerHTML = `
+      <div style="background:#fff;border-radius:8px;border:1px solid var(--borda);padding:.75rem;overflow:auto">${svg}</div>
+      <div class="graph-legend">
+        <div class="graph-legend-item"><div class="legend-dot" style="background:#e8f0fe;border:1px solid #1a73e8"></div><span>Nó RAG</span></div>
+        <div class="graph-legend-item"><div class="legend-dot" style="background:#fef9e7;border:1px solid #b7791f"></div><span>Roteador</span></div>
+        <div class="graph-legend-item"><div class="legend-dot" style="background:#e6fffa;border:1px solid #38a169"></div><span>Nó LLM</span></div>
+        <div class="graph-legend-item"><div class="legend-dot" style="background:#f0f0f0;border:1px solid #aaa"></div><span>Fim</span></div>
       </div>
-    `);
-  } else {
-    steps.push(`
-      <div class="debug-step pass">
-        <div class="label">${iconMap.pass} Guardrail &#x2014; Resposta aprovada</div>
-        <div class="value">A resposta estava dentro do contexto das fontes.</div>
-      </div>
-    `);
+      ${pathInfo}
+    `;
+  } catch(e) {
+    container.innerHTML = `<div class="empty-state"><div class="big">⚠️</div>Erro ao renderizar grafo: ${e.message}</div>`;
   }
-
-  steps.push(`
-    <div class="debug-step pass">
-      <div class="label">${iconMap.pass} Resposta final</div>
-      <div class="value">${escapeHtml(info.resposta_final)}</div>
-    </div>
-  `);
-
-  debugContent.innerHTML = steps.join('');
 }
 
-function toggleCollapse(id, btn) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const isCollapsed = el.style.maxHeight !== '' && el.style.maxHeight !== 'none';
-  el.style.maxHeight = isCollapsed ? 'none' : '4.5em';
-  btn.textContent = isCollapsed ? 'Mostrar menos' : 'Mostrar mais';
+function highlightGraphPath(info) {
+  if (!graphData || !info) return;
+  const path = info.tentativas > 0 ? 'buscar_mais' : 'direto';
+  // Só renderiza se a aba grafo estiver visível
+  if (document.querySelector('[data-tab="grafo"]').classList.contains('active')) {
+    renderGraph(graphData, path);
+  }
+  // Guarda para quando o usuário mudar para a aba grafo
+  graphData._lastPath = path;
 }
 
-function escapeHtml(text) {
-  const d = document.createElement('div');
-  d.textContent = text;
-  return d.innerHTML;
-}
+// Override para mostrar caminho ao abrir aba grafo
+document.querySelectorAll('.debug-tab').forEach(tab => {
+  const original = tab.onclick;
+  tab.addEventListener('click', () => {
+    if (tab.dataset.tab === 'grafo' && graphData) {
+      setTimeout(() => renderGraph(graphData, graphData._lastPath), 0);
+    }
+  });
+});
 
+// ── Ingestão ──────────────────────────────────────────────────────────────────
+function toggleIngest() {
+  const toggle = document.getElementById('ingestToggle');
+  const panel  = document.getElementById('ingestPanel');
+  toggle.classList.toggle('open');
+  panel.classList.toggle('open');
+}
+window.toggleIngest = toggleIngest;
+
+async function ingestir() {
+  const texto  = document.getElementById('ingestTexto').value.trim();
+  const titulo = document.getElementById('ingestTitulo').value.trim();
+  const btn    = document.getElementById('ingestBtn');
+  const status = document.getElementById('ingestStatus');
+
+  if (!texto) { status.textContent = '⚠️ Digite algum texto primeiro.'; status.style.color='#e8a71a'; return; }
+
+  btn.disabled = true;
+  status.textContent = '⏳ Ingerindo...'; status.style.color='#888';
+
+  try {
+    const res  = await fetch('/ingest', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ texto, titulo }),
+    });
+    const data = await res.json();
+    status.textContent = data.mensagem; status.style.color='var(--verde)';
+    document.getElementById('ingestTexto').value  = '';
+    document.getElementById('ingestTitulo').value = '';
+  } catch(e) {
+    status.textContent = '❌ Erro: ' + e.message; status.style.color='var(--vermelho)';
+  } finally {
+    btn.disabled = false;
+  }
+}
+window.ingestir = ingestir;
+
+// ── Enviar pergunta ───────────────────────────────────────────────────────────
 async function sendMessage() {
   const text = input.value.trim();
   if (!text) return;
@@ -263,23 +825,26 @@ async function sendMessage() {
   addMessage(text, 'user');
   showLoading();
   sendBtn.disabled = true;
+  highlightPipeline('rag');
 
   try {
     const res = await fetch('/chat/debug', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ mensagem: text, persona: currentPersona }),
     });
-    if (!res.ok) throw new Error('Erro ' + res.status);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     removeLoading();
+    highlightPipeline(null);
     const msgId = Date.now().toString();
     debugHistory[msgId] = data;
-    addMessage(data.resposta_final, 'bot', msgId);
-    showDebug(msgId);
-  } catch (e) {
+    const msgEl = addMessage(data.resposta_final, 'bot', msgId);
+    selectMessage(msgEl, msgId);
+  } catch(e) {
     removeLoading();
-    addMessage('Erro ao conectar com o servidor: ' + e.message, 'error');
+    highlightPipeline(null);
+    addMessage('❌ Erro ao conectar com o servidor: ' + e.message, 'error');
   } finally {
     sendBtn.disabled = false;
     input.focus();
@@ -288,6 +853,9 @@ async function sendMessage() {
 
 sendBtn.addEventListener('click', sendMessage);
 input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadGraph();
 </script>
 </body>
 </html>

@@ -4,12 +4,12 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    soberano_api_base_url: str = "https://<endpoint-da-mandu>"
+    soberano_api_base_url: str = "https://api.sobdemanda.mandu.piaui.pro/v1"
     soberano_api_key: str = ""
-    soberano_model: str = "soberano-1.1"
+    soberano_model: str = "Qwen/Qwen3.6-35B-A3B"
 
     embeddings_provider: str = "local"
-    embeddings_model: str = "intfloat/multilingual-e5-small"
+    embeddings_model: str = "BAAI/bge-m3"
 
     data_path: str = "data/pib_piaui.csv"
     vector_store: str = "faiss"
