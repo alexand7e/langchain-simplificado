@@ -1,3 +1,14 @@
+---
+title: SIA — Agente Educacional
+emoji: 🎓
+colorFrom: indigo
+colorTo: blue
+sdk: docker
+app_port: 8000
+pinned: false
+short_description: Agente educacional RAG (LangChain + Mandu)
+---
+
 # Agente Educacional — LangChain + Soberano 1.1
 
 Agente de IA conversacional em português que responde perguntas a partir de fontes confiáveis (RAG). Projeto didático que acompanha a palestra **"LangChain na sala de aula"** — do Piauí para o Mundo.
@@ -21,7 +32,7 @@ python -m agente_edu.app
 Aluno (Telegram/Web) → Interface → RAG (busca contexto) → Prompt → Soberano 1.1 → Guardrail → Resposta
 ```
 
-![Diagrama de arquitetura](docs/img/arquitetura.png)
+> 📄 Diagrama detalhado e princípios de design em [docs/arquitetura.md](docs/arquitetura.md).
 
 | Camada        | Pasta              | Responsabilidade                    |
 |---------------|--------------------|-------------------------------------|
