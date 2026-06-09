@@ -6,6 +6,6 @@ services:
     ports:
       - "${WEB_PORT:-8000}:8000"
     volumes:
-      - .index:/app/.index
+      - ./.index:/app/.index
       - ./data:/app/data
     restart: unless-stopped

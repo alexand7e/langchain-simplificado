@@ -13,7 +13,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable
 
 from agente_edu.chains.prompt import montar_prompt
-from agente_edu.guardrails.rules import REGRA, validar
+from agente_edu.guardrails.rules import validar
 from agente_edu.llm.soberano import Soberano
 
 
@@ -42,7 +42,7 @@ def construir_chain(persona: str = "ensino_medio") -> Runnable:
 def responder(pergunta: str, contexto: str, persona: str = "ensino_medio") -> str:
     """Resposta simples: executa a chain e aplica o guardrail."""
     chain = construir_chain(persona)
-    resposta = chain.invoke({"contexto": contexto, "pergunta": pergunta, "regra": REGRA})
+    resposta = chain.invoke({"contexto": contexto, "pergunta": pergunta})
     return validar(resposta, contexto)
 
 
@@ -54,7 +54,7 @@ def responder_com_detalhes(
     persona: str = "ensino_medio",
 ) -> DebugInfo:
     """Executa a chain e devolve cada etapa intermediária para inspeção."""
-    inputs = {"contexto": contexto or "(vazio)", "pergunta": pergunta, "regra": REGRA}
+    inputs = {"contexto": contexto or "(vazio)", "pergunta": pergunta}
 
     # Formata o prompt para exibição — o mesmo texto que vai para o modelo
     prompt_texto = montar_prompt(persona).format(**inputs)

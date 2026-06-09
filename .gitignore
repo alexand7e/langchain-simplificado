@@ -19,3 +19,6 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+.claude/
+alexand7e-pc.tail5ec887.ts.net.crt
+alexand7e-pc.tail5ec887.ts.net.key

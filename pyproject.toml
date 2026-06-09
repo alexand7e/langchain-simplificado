@@ -21,6 +21,8 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pandas>=2",
+    "pypdf>=4",
+    "langchain-openai>=0.1",
 ]
 
 [project.optional-dependencies]

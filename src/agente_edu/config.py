@@ -26,11 +26,17 @@ class Settings(BaseSettings):
     rate_limit_por_min: int = 10
     log_level: str = "INFO"
 
+    default_base_id: str = "pib"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+# Quando instalado via pip, __file__ aponta para site-packages.
+# Usamos APP_BASE_DIR (env) com fallback para o diretório de trabalho atual,
+# que é a raiz do projeto tanto localmente quanto no Docker (WORKDIR /app).
+import os as _os
+BASE_DIR = Path(_os.environ.get("APP_BASE_DIR", Path.cwd()))
 DATA_DIR = BASE_DIR / "data"
 INDEX_DIR = BASE_DIR / settings.vector_store_path

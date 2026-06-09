@@ -5,12 +5,15 @@ from agente_edu.rag.ingest import preparar
 
 
 class Retriever:
-    def __init__(self):
+    def __init__(self, base_id: str | None = None):
+        self._base_id = base_id or settings.default_base_id
         self._vectorstore = None
 
     def _obter_store(self):
         if self._vectorstore is None:
-            self._vectorstore = preparar()
+            from agente_edu.rag.bases import BASES
+            base = BASES.get(self._base_id)
+            self._vectorstore = preparar(base)
         return self._vectorstore
 
     def buscar(self, pergunta: str, k: int = 3) -> str:

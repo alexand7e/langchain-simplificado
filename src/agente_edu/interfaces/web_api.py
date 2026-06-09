@@ -5,19 +5,23 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from agente_edu.chains.qa_chain import DebugInfo, responder, responder_com_detalhes
+from agente_edu.chains.qa_chain import responder, responder_com_detalhes
 from agente_edu.config import settings
+from agente_edu.rag.bases import BASES, arquivo_disponivel, base_indexada
 from agente_edu.rag.retriever import Retriever
 
 logger = logging.getLogger(__name__)
-retriever = Retriever()
 
 STATIC_DIR = Path("static").resolve()
 
 app = FastAPI(title="Agente Educacional")
 
+# Retriever ativo — trocado via POST /bases/{id}/selecionar
+retriever_ativo: Retriever = Retriever(settings.default_base_id)
+base_ativa_id: str = settings.default_base_id
 
-# ── Modelos de request/response ───────────────────────────────────────────────
+
+# ── Modelos ───────────────────────────────────────────────────────────────────
 
 class Pergunta(BaseModel):
     mensagem: str
@@ -50,7 +54,78 @@ class IngestResponse(BaseModel):
     caracteres: int
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+class BaseInfo(BaseModel):
+    id: str
+    nome: str
+    descricao: str
+    icone: str
+    tipo: str
+    disponivel: bool
+    indexada: bool
+    ativa: bool
+
+
+# ── Endpoints: bases de conhecimento ─────────────────────────────────────────
+
+@app.get("/bases", response_model=list[BaseInfo])
+def listar_bases():
+    """Lista todas as bases com status de disponibilidade e indexação."""
+    return [
+        BaseInfo(
+            id=b.id,
+            nome=b.nome,
+            descricao=b.descricao,
+            icone=b.icone,
+            tipo=b.tipo,
+            disponivel=arquivo_disponivel(b),
+            indexada=base_indexada(b),
+            ativa=(b.id == base_ativa_id),
+        )
+        for b in BASES.values()
+    ]
+
+
+@app.get("/bases/ativa", response_model=BaseInfo)
+def base_ativa():
+    b = BASES[base_ativa_id]
+    return BaseInfo(
+        id=b.id, nome=b.nome, descricao=b.descricao, icone=b.icone,
+        tipo=b.tipo, disponivel=arquivo_disponivel(b),
+        indexada=base_indexada(b), ativa=True,
+    )
+
+
+@app.post("/bases/{base_id}/selecionar", response_model=BaseInfo)
+def selecionar_base(base_id: str):
+    """Troca a base de conhecimento ativa. Só aceita bases já indexadas."""
+    global retriever_ativo, base_ativa_id
+
+    if base_id not in BASES:
+        raise HTTPException(status_code=404, detail=f"Base '{base_id}' não encontrada.")
+
+    base = BASES[base_id]
+
+    if not arquivo_disponivel(base):
+        raise HTTPException(status_code=400, detail=f"Arquivo-fonte da base '{base_id}' não encontrado.")
+
+    if not base_indexada(base):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Base '{base_id}' ainda não foi indexada. "
+                   f"Execute: python -m agente_edu.rag.ingest --base={base_id}",
+        )
+
+    retriever_ativo = Retriever(base_id)
+    base_ativa_id   = base_id
+    logger.info(f"Base ativa trocada para: {base_id}")
+
+    return BaseInfo(
+        id=base.id, nome=base.nome, descricao=base.descricao, icone=base.icone,
+        tipo=base.tipo, disponivel=True, indexada=True, ativa=True,
+    )
+
+
+# ── Endpoints: chat ───────────────────────────────────────────────────────────
 
 @app.get("/")
 def index():
@@ -59,14 +134,14 @@ def index():
 
 @app.post("/chat")
 def chat(pergunta: Pergunta):
-    contexto = retriever.buscar(pergunta.mensagem, k=settings.top_k)
+    contexto = retriever_ativo.buscar(pergunta.mensagem, k=settings.top_k)
     resposta_txt = responder(pergunta.mensagem, contexto, persona=pergunta.persona)
     return Resposta(resposta=resposta_txt)
 
 
 @app.post("/chat/debug")
 def chat_debug(pergunta: Pergunta):
-    contexto = retriever.buscar(pergunta.mensagem, k=settings.top_k)
+    contexto = retriever_ativo.buscar(pergunta.mensagem, k=settings.top_k)
     try:
         info = responder_com_detalhes(pergunta.mensagem, contexto, persona=pergunta.persona)
         return RespostaDebug(**info.__dict__)
@@ -89,15 +164,15 @@ def chat_debug(pergunta: Pergunta):
 
 @app.post("/ingest")
 def ingest(req: IngestRequest):
-    """Adiciona texto ao índice vetorial em tempo real (sem reiniciar o servidor)."""
+    """Adiciona texto ao índice da base ativa em tempo real."""
     if not req.texto.strip():
         raise HTTPException(status_code=400, detail="Texto não pode ser vazio.")
     try:
-        retriever.adicionar(req.texto, titulo=req.titulo)
+        retriever_ativo.adicionar(req.texto, titulo=req.titulo)
         logger.info(f"Ingestão manual: {len(req.texto)} chars, título='{req.titulo}'")
         return IngestResponse(
             ok=True,
-            mensagem=f"✅ Conteúdo adicionado! O agente já pode responder sobre '{req.titulo or 'este tema'}'.",
+            mensagem=f"✅ Adicionado à base '{base_ativa_id}'! O agente já pode responder sobre '{req.titulo or 'este tema'}'.",
             caracteres=len(req.texto),
         )
     except Exception as e:
@@ -107,21 +182,20 @@ def ingest(req: IngestRequest):
 
 @app.get("/graph")
 def get_graph():
-    """Retorna a estrutura do grafo LangGraph para visualização no frontend."""
     return {
         "nodes": [
-            {"id": "recuperar",  "label": "recuperar",  "tipo": "no",    "descricao": "Busca inicial no índice vetorial (RAG)"},
-            {"id": "decidir",    "label": "decidir()",  "tipo": "router", "descricao": "Decide: há contexto?"},
-            {"id": "buscar_mais","label": "buscar_mais","tipo": "no",    "descricao": "Segunda busca com k dobrado"},
-            {"id": "responder",  "label": "responder",  "tipo": "no",    "descricao": "Gera a resposta com o LLM"},
-            {"id": "END",        "label": "FIM",        "tipo": "fim",   "descricao": ""},
+            {"id": "recuperar",   "label": "recuperar",   "tipo": "no",     "descricao": "Busca inicial no índice vetorial (RAG)"},
+            {"id": "decidir",     "label": "decidir()",   "tipo": "router",  "descricao": "Decide: há contexto?"},
+            {"id": "buscar_mais", "label": "buscar_mais", "tipo": "no",     "descricao": "Segunda busca com k dobrado"},
+            {"id": "responder",   "label": "responder",   "tipo": "no",     "descricao": "Gera a resposta com o LLM"},
+            {"id": "END",         "label": "FIM",         "tipo": "fim",    "descricao": ""},
         ],
         "edges": [
-            {"from": "recuperar",  "to": "decidir",    "label": ""},
-            {"from": "decidir",    "to": "responder",  "label": "contexto encontrado"},
-            {"from": "decidir",    "to": "buscar_mais","label": "contexto vazio (1ª vez)"},
-            {"from": "buscar_mais","to": "responder",  "label": ""},
-            {"from": "responder",  "to": "END",        "label": ""},
+            {"from": "recuperar",   "to": "decidir",    "label": ""},
+            {"from": "decidir",     "to": "responder",  "label": "contexto encontrado"},
+            {"from": "decidir",     "to": "buscar_mais","label": "contexto vazio (1ª vez)"},
+            {"from": "buscar_mais", "to": "responder",  "label": ""},
+            {"from": "responder",   "to": "END",        "label": ""},
         ],
         "mermaid": (
             "flowchart TD\n"
@@ -130,18 +204,18 @@ def get_graph():
             "  decidir -->|contexto vazio| buscar_mais([🔎 buscar_mais])\n"
             "  buscar_mais --> responder\n"
             "  responder --> FIM([🏁 FIM])\n"
-            "  style recuperar  fill:#e8f0fe,stroke:#1a73e8,color:#1a1a1a\n"
+            "  style recuperar   fill:#e8f0fe,stroke:#1a73e8,color:#1a1a1a\n"
             "  style buscar_mais fill:#e8f0fe,stroke:#1a73e8,color:#1a1a1a\n"
-            "  style responder  fill:#e6fffa,stroke:#38a169,color:#1a1a1a\n"
-            "  style decidir    fill:#fef9e7,stroke:#b7791f,color:#1a1a1a\n"
-            "  style FIM        fill:#f0f0f0,stroke:#aaa,color:#555\n"
+            "  style responder   fill:#e6fffa,stroke:#38a169,color:#1a1a1a\n"
+            "  style decidir     fill:#fef9e7,stroke:#b7791f,color:#1a1a1a\n"
+            "  style FIM         fill:#f0f0f0,stroke:#aaa,color:#555\n"
         ),
     }
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "base_ativa": base_ativa_id}
 
 
 def rodar():

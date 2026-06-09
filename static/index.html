@@ -299,16 +299,127 @@
     .main { flex-direction:column; }
     .debug-panel { width:100%; max-height:45vh; }
   }
+
+  /* ── Splash screen ── */
+  .splash {
+    position:fixed; inset:0; z-index:1000;
+    background:linear-gradient(135deg,#1558b0 0%,#1a73e8 60%,#0d9488 100%);
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    padding:1.5rem; overflow-y:auto;
+  }
+  .splash.hidden { display:none; }
+
+  .splash-logo {
+    font-size:2.8rem; margin-bottom:.4rem;
+  }
+  .splash h2 {
+    color:#fff; font-size:1.5rem; font-weight:700; text-align:center;
+    margin-bottom:.3rem;
+  }
+  .splash p {
+    color:rgba(255,255,255,.8); font-size:.9rem; text-align:center;
+    margin-bottom:2rem;
+  }
+
+  .splash-bases {
+    display:flex; gap:1rem; flex-wrap:wrap; justify-content:center;
+    max-width:860px; width:100%;
+  }
+
+  .base-card {
+    background:#fff; border-radius:14px;
+    padding:1.25rem 1.4rem; width:240px; flex-shrink:0;
+    box-shadow:0 4px 20px rgba(0,0,0,.18);
+    cursor:pointer; transition:transform .18s, box-shadow .18s;
+    border:2px solid transparent; position:relative;
+    display:flex; flex-direction:column; gap:.4rem;
+  }
+  .base-card:hover:not(.disabled) {
+    transform:translateY(-4px);
+    box-shadow:0 8px 28px rgba(0,0,0,.25);
+    border-color:var(--azul);
+  }
+  .base-card.disabled {
+    opacity:.5; cursor:not-allowed;
+  }
+  .base-card.loading {
+    pointer-events:none; opacity:.75;
+  }
+
+  .base-card .card-icon { font-size:2rem; }
+  .base-card .card-nome {
+    font-weight:700; font-size:.95rem; color:var(--texto);
+  }
+  .base-card .card-desc {
+    font-size:.78rem; color:#555; line-height:1.45;
+  }
+  .base-card .card-badges {
+    display:flex; gap:.3rem; flex-wrap:wrap; margin-top:.2rem;
+  }
+  .badge {
+    font-size:.68rem; font-weight:600; padding:.15rem .45rem;
+    border-radius:10px; white-space:nowrap;
+  }
+  .badge.tipo    { background:#e8f0fe; color:#1a73e8; }
+  .badge.pronto  { background:#e6fffa; color:#276749; }
+  .badge.ausente { background:#fff0f0; color:#c53030; }
+  .badge.nao-idx { background:#fef9e7; color:#b7791f; }
+
+  .base-card .card-spinner {
+    position:absolute; top:.7rem; right:.9rem;
+    width:18px; height:18px; border-radius:50%;
+    border:2px solid #ccc; border-top-color:var(--azul);
+    animation:spin .7s linear infinite; display:none;
+  }
+  .base-card.loading .card-spinner { display:block; }
+
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  .splash-hint {
+    color:rgba(255,255,255,.6); font-size:.75rem; margin-top:1.25rem;
+    text-align:center; max-width:500px; line-height:1.5;
+  }
+
+  /* Badge da base ativa no header */
+  .base-badge {
+    display:inline-flex; align-items:center; gap:.35rem;
+    background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.35);
+    border-radius:20px; padding:.2rem .65rem;
+    font-size:.75rem; cursor:pointer; transition:background .15s;
+    white-space:nowrap;
+  }
+  .base-badge:hover { background:rgba(255,255,255,.3); }
 </style>
 </head>
 <body>
+
+<!-- ── Splash: seletor de base de conhecimento ── -->
+<div class="splash" id="splash">
+  <div class="splash-logo">&#x1F916;</div>
+  <h2>Agente Educacional com LangChain</h2>
+  <p>Escolha a base de conhecimento que o agente vai usar nesta sess&#xe3;o</p>
+  <div class="splash-bases" id="splashBases">
+    <div style="color:rgba(255,255,255,.7);font-size:.9rem">Carregando bases...</div>
+  </div>
+  <p class="splash-hint">
+    Bases com &#x26A1; pronto carregam instant&#xe2;neamente.<br>
+    Bases sem &#xed;ndice precisam ser indexadas antes da palestra:<br>
+    <code style="background:rgba(0,0,0,.25);padding:.1rem .4rem;border-radius:4px">python -m agente_edu.rag.ingest --base=ID</code>
+  </p>
+</div>
 
 <div class="header">
   <div>
     <h1>&#x1F916; Agente Educacional com LangChain</h1>
     <p>Do Piau&#xed; para o Mundo &#x2014; Palestra ao vivo</p>
   </div>
-  <span class="tag">LangChain + LangGraph + RAG</span>
+  <div style="display:flex;align-items:center;gap:.6rem">
+    <span class="base-badge" id="baseBadge" onclick="abrirSplash()" title="Trocar base de conhecimento">
+      &#x1F4CA; Carregando...
+    </span>
+    <span class="tag">LangChain + LangGraph + RAG</span>
+  </div>
 </div>
 
 <div class="pipeline" id="pipeline">
@@ -854,8 +965,111 @@ async function sendMessage() {
 sendBtn.addEventListener('click', sendMessage);
 input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
+// ── Splash: seletor de base de conhecimento ──────────────────────────────────
+
+function abrirSplash() {
+  document.getElementById('splash').classList.remove('hidden');
+  carregarBases();
+}
+window.abrirSplash = abrirSplash;
+
+function fecharSplash() {
+  document.getElementById('splash').classList.add('hidden');
+}
+
+function badgeTipo(tipo) {
+  const labels = { csv: '📊 CSV', pdf: '📄 PDF', codigo: '💻 Código' };
+  return `<span class="badge tipo">${labels[tipo] || tipo}</span>`;
+}
+
+async function carregarBases() {
+  const container = document.getElementById('splashBases');
+  try {
+    const res   = await fetch('/bases');
+    const bases = await res.json();
+
+    container.innerHTML = bases.map(b => {
+      const habilitada = b.disponivel && b.indexada;
+      const cls = habilitada ? '' : 'disabled';
+
+      let statusBadge = '';
+      if (!b.disponivel) {
+        statusBadge = '<span class="badge ausente">arquivo não encontrado</span>';
+      } else if (!b.indexada) {
+        statusBadge = `<span class="badge nao-idx" title="python -m agente_edu.rag.ingest --base=${b.id}">🔄 não indexada</span>`;
+      } else {
+        statusBadge = '<span class="badge pronto">⚡ pronto</span>';
+      }
+
+      return `
+        <div class="base-card ${cls}" data-id="${b.id}" onclick="selecionarBase('${b.id}', ${habilitada})">
+          <div class="card-spinner"></div>
+          <div class="card-icon">${b.icone}</div>
+          <div class="card-nome">${b.nome}</div>
+          <div class="card-desc">${b.descricao}</div>
+          <div class="card-badges">
+            ${badgeTipo(b.tipo)}
+            ${statusBadge}
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    container.innerHTML = `<div style="color:#ffd;font-size:.85rem">Erro ao carregar bases: ${e.message}</div>`;
+  }
+}
+
+async function selecionarBase(baseId, habilitada) {
+  if (!habilitada) return;
+
+  const card = document.querySelector(`.base-card[data-id="${baseId}"]`);
+  card?.classList.add('loading');
+
+  try {
+    const res  = await fetch(`/bases/${baseId}/selecionar`, { method: 'POST' });
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.detail || 'Erro ao selecionar base.');
+      card?.classList.remove('loading');
+      return;
+    }
+
+    // Atualiza badge no header
+    document.getElementById('baseBadge').textContent = `${data.icone} ${data.nome}`;
+
+    fecharSplash();
+
+    // Limpa o histórico de mensagens ao trocar de base
+    const msg = document.getElementById('messages');
+    msg.innerHTML = `<div class="msg bot">
+      Base trocada para <strong>${data.icone} ${data.nome}</strong>.<br>
+      ${data.descricao}
+    </div>`;
+
+  } catch(e) {
+    alert('Erro de conexão: ' + e.message);
+    card?.classList.remove('loading');
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
-loadGraph();
+async function init() {
+  loadGraph();
+
+  // Carrega a base ativa atual do servidor
+  try {
+    const res  = await fetch('/bases/ativa');
+    const base = await res.json();
+    document.getElementById('baseBadge').textContent = `${base.icone} ${base.nome}`;
+  } catch(_) {}
+
+  // Mostra splash na primeira visita (sem base previamente selecionada)
+  // ou se quiser sempre mostrar, deixe o if abaixo sem condição
+  carregarBases();
+  // Splash já começa visível pelo HTML — fecharSplash() é chamado após seleção
+}
+
+init();
 </script>
 </body>
 </html>

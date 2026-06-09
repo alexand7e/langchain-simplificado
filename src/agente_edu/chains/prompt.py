@@ -24,8 +24,6 @@ Você é um assistente que responde APENAS com base nas fontes fornecidas abaixo
 Nunca invente informações. Se a resposta não estiver nas fontes, diga
 educadamente que não encontrou a informação.
 
-REGRA: {regra}
-
 Contexto das fontes:
 {contexto}
 
@@ -39,6 +37,6 @@ def montar_prompt(persona: str = "ensino_medio") -> PromptTemplate:
     descricao = PERSONAS.get(persona, PERSONAS["ensino_medio"])
     return PromptTemplate(
         template=TEMPLATE,
-        input_variables=["contexto", "pergunta", "regra"],
+        input_variables=["contexto", "pergunta"],
         partial_variables={"persona": descricao},
     )
