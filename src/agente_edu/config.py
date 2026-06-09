@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     vector_store_path: str = ".index"
 
     default_persona: str = "ensino_medio"
-    top_k: int = 3
+    top_k: int = 5
 
     interface: str = "web"
     telegram_bot_token: str = ""

@@ -34,7 +34,7 @@ BASES: dict[str, BaseConhecimento] = {
     "codigo": BaseConhecimento(
         id="codigo",
         nome="Código deste Projeto",
-        descricao="O código-fonte completo do agente educacional — LangChain, LangGraph, RAG e guardrails",
+        descricao="Código-fonte + documentação do agente educacional — LangChain, LangGraph, RAG, guardrails e o guia de adaptação",
         icone="💻",
         tipo="codigo",
         caminho="src/agente_edu",

@@ -100,12 +100,19 @@ def _carregar_pdf(caminho: Path) -> list[Document]:
 
 
 def _carregar_codigo(caminho: Path) -> list[Document]:
-    """1 Document por arquivo .py encontrado recursivamente."""
+    """Carrega a base do projeto: código (.py) + documentação (.md).
+
+    Os arquivos .py respondem perguntas técnicas ("o que faz a função X").
+    Os docs (README, spec, docs/*.md) respondem perguntas abstratas/holísticas
+    ("explique o projeto em linhas gerais", "como aplicar na minha escola") —
+    sem eles, o RAG não tem de onde sintetizar uma visão geral.
+    """
     documentos = []
+
+    # 1) Código-fonte: 1 Document por arquivo .py
     for arquivo in sorted(caminho.rglob("*.py")):
         try:
             texto = arquivo.read_text(encoding="utf-8")
-            # Caminho relativo ao projeto para facilitar referência
             relativo = arquivo.relative_to(BASE_DIR)
             documentos.append(Document(
                 page_content=f"# arquivo: {relativo}\n\n{texto}",
@@ -113,7 +120,25 @@ def _carregar_codigo(caminho: Path) -> list[Document]:
             ))
         except Exception as e:
             logger.warning(f"Erro ao ler {arquivo}: {e}")
-    logger.info(f"Código carregado: {len(documentos)} arquivos .py")
+    n_codigo = len(documentos)
+
+    # 2) Documentação do projeto: README, spec e docs/*.md
+    docs_md = [BASE_DIR / "README.md", BASE_DIR / "spec.md"]
+    docs_md += sorted((BASE_DIR / "docs").rglob("*.md"))
+    for arquivo in docs_md:
+        if not arquivo.exists():
+            continue
+        try:
+            texto = arquivo.read_text(encoding="utf-8")
+            relativo = arquivo.relative_to(BASE_DIR)
+            documentos.append(Document(
+                page_content=f"# documento: {relativo}\n\n{texto}",
+                metadata={"arquivo": str(relativo), "tipo": "doc"},
+            ))
+        except Exception as e:
+            logger.warning(f"Erro ao ler {arquivo}: {e}")
+
+    logger.info(f"Projeto carregado: {n_codigo} arquivos .py + {len(documentos) - n_codigo} docs .md")
     return documentos
 
 
@@ -127,6 +152,59 @@ def carregar_base(base) -> list[Document]:
     if base.tipo == "codigo":
         return _carregar_codigo(caminho)
     raise ValueError(f"Tipo de base desconhecido: '{base.tipo}'")
+
+
+# ── ETAPA 1.5: Dividir em chunks ──────────────────────────────────────────────
+# Por que dividir? Um documento grande (página de PDF, arquivo .py inteiro) vira
+# UM único vetor, "diluindo" o significado e piorando a busca. Quebrar em trechos
+# menores e coerentes deixa cada vetor específico → retrieval muito mais preciso.
+
+def _dividir(documentos: list[Document], base) -> list[Document]:
+    """Divide os documentos em chunks adequados ao tipo da base.
+
+    csv    — não divide (1 linha = 1 fato, já é granular).
+    pdf    — chunks de texto corrido com sobreposição; preserva o metadado `page`.
+    codigo — divisão ciente da sintaxe Python; re-prefixa cada chunk com o arquivo.
+    """
+    from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
+
+    if base.tipo == "csv":
+        return documentos
+
+    if base.tipo == "pdf":
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=150,
+            separators=["\n\n", "\n", ". ", " ", ""],
+        )
+        chunks = splitter.split_documents(documentos)
+        logger.info(f"PDF dividido em {len(chunks)} chunks (de {len(documentos)} páginas)")
+        return chunks
+
+    if base.tipo == "codigo":
+        # A base mistura código (.py) e documentação (.md): cada um com seu splitter.
+        py_splitter = RecursiveCharacterTextSplitter.from_language(
+            Language.PYTHON, chunk_size=800, chunk_overlap=100
+        )
+        md_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=150,
+            separators=["\n## ", "\n### ", "\n\n", "\n", ". ", " ", ""],
+        )
+        docs_codigo = [d for d in documentos if d.metadata.get("tipo") == "codigo"]
+        docs_md     = [d for d in documentos if d.metadata.get("tipo") == "doc"]
+        chunks = py_splitter.split_documents(docs_codigo) + md_splitter.split_documents(docs_md)
+
+        # Cada chunk perde o cabeçalho com o nome do arquivo — re-ancorar.
+        for chunk in chunks:
+            arquivo = chunk.metadata.get("arquivo", "")
+            rotulo = "documento" if chunk.metadata.get("tipo") == "doc" else "arquivo"
+            if arquivo and not chunk.page_content.lstrip().startswith(("# arquivo:", "# documento:")):
+                chunk.page_content = f"# {rotulo}: {arquivo}\n{chunk.page_content}"
+        logger.info(f"Projeto dividido em {len(chunks)} chunks (de {len(documentos)} arquivos)")
+        return chunks
+
+    return documentos
 
 
 # ── ETAPA 2: Indexar ──────────────────────────────────────────────────────────
@@ -181,6 +259,7 @@ def preparar(base=None):
 
     logger.info(f"Criando índice para base '{base.id}'...")
     documentos = carregar_base(base)
+    documentos = _dividir(documentos, base)
     return indexar(documentos, index_dir)
 
 
